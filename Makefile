@@ -63,6 +63,8 @@ init:
 	@if [ ! -d "$(MANTIDDIR)" ]; then \
 		git clone https://github.com/mantidproject/mantid.git; \
 	fi
+	@echo "switch to ornl-next branch"
+	@cd $(MANTIDDIR); git checkout ornl-next
 	@echo "make data directory, put testing data here"
 	mkdir -p data
 	@echo "config Mantid from scratch"
