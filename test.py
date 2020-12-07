@@ -4,33 +4,49 @@ import numpy as np
 from pathlib import Path
 from os import path
 
-from corelli.calibration import (apply_calibration, calibrate_banks, day_stamp, load_banks, load_calibration_set,
-                                 save_calibration_set, new_corelli_calibration)
+from scipy.signal import gaussian_filter1d
 
-# A collection of wire-scans. We use them to populate the database
-runs = [(124024, '36-41, 7-10', 'CORELLI_124024_banks_36-41_7-10')]
+from corelli.calibration import (
+    apply_calibration, 
+    calibrate_banks, 
+    day_stamp, 
+    load_banks, 
+    load_calibration_set,
+    save_calibration_set, 
+    new_corelli_calibration,
+    )
 
-# Load the integrated count files for all the wire-scans
-data_dir = '/SNS/CORELLI/shared/tmp/calibration'  # a temporary calibration
+# isolate bank 7 and bank 8
+nxs_file_name = "/SNS/CORELLI/shared/tmp/calibration/CORELLI_124024_banks_36-41_7-10.nxs"
+load_banks(nxs_file_name, "36-41, 7-10", output_workspace="ws")
 
-for _, bank_selection, workspace_name in runs:
-    file_path = path.join(data_dir, workspace_name + '.nxs')
-    load_banks(file_path, bank_selection, output_workspace=workspace_name)
-
-# generating a set of individual bank calibrations
-[DeleteWorkspace(name) for name in ['calibrations', 'mask', 'fits'] if AnalysisDataService.doesExist(name) is True]  # first a cleanup
-for _, bank_selection, workspace_name in runs:
-    calibrate_banks(workspace_name, bank_selection, calibration_group = 'calibrations',
-                    mask_group = 'mask', fit_group = 'fits', minimum_intensity=400)
+# clone the workspace
+CloneWorkspace(InputWorkspace='ws', OutputWorkspace="ws_cleaned")
 
 
-"""
-reference
-from corelli.calibration.bank import calibrate_banks
-from corelli.calibration.utils import apply_calibration, load_banks
-counts_file = '/SNS/CORELLI/shared/tmp/CORELLI_124023_counts.nxs'  # counts per pixel already integrated, to save time
-load_banks(counts_file, bank_selection='10', output_workspace='counts')
-calibrate_banks('counts', bank_selection='10')  # this calculates the calibration for 10 banks
-# Now we apply the calibration just to bank10
-apply_calibration('counts', 'calib10', output_workspace='counts_10', show_instrument=True)
-"""
+def clean_signals(signal1D, pixels_per_tube=256, peak_interval_estimate=15):
+    _sig_gaussian = gaussian_filter1d(signal1D, int(peak_interval_estimate/2))
+    _sig_tmp = _sig_gaussian - signal1D
+    _sig_tmp[_sig_tmp<0] = 1
+    _idx = np.where(_sig_tmp==1)[0]
+    _sig_tmp[:_idx[0]] = 1
+    _sig_tmp[_idx[-1]:] = 1
+    #
+    _base = np.average(gaussian_filter1d(signal1D, int(pixels_per_tube/2)))
+    return _base - _sig_tmp
+
+ws = mtd['ws']
+ws_cleaned = mtd['ws_cleaned']
+n_pixels_per_tube = 256
+
+# go over one tube at a time (can parallel if needed)
+for i in range(0, ws.getNumberHistograms(), n_pixels_per_tube):
+    _data = np.array([ws.readY(me) for me in range(i, i+n_pixels_per_tube)])
+    _data = clean_signals(_data)
+    _ = [ws_cleaned.setY(me, _data[me]) for me in range(i, i+n_pixels_per_tube)]
+
+# calculate the calibration using cleaned data
+calibrate_banks("ws_cleaned", "36-41, 7-10")
+
+# apply the calibration to original data
+apply_calibration("ws", "calibrations", output_workspace="ws_calibrated", show_instrument=True)
