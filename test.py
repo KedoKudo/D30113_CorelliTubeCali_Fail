@@ -36,7 +36,7 @@ runs = [
     (123455, '20-28', 'CORELLI_123455_banks_20-28'),
     (124016, '10-13, 15-19', 'CORELLI_124016_banks_10-13_15-19'),
     (124018, '42-51', 'CORELLI_124018_banks_42-51'),
-    (124021, '68-71, 86, 31-35', 'CORELLI_124021_banks_68-71_86_31-35'),
+    # (124021, '68-71, 86, 31-35', 'CORELLI_124021_banks_68-71_86_31-35'),  # not enough count
     (124022, '68-71, 86, 31-35', 'CORELLI_124022_banks_68-71_86_31-35'),
     (124023, '10-19', 'CORELLI_124023_banks_10-19'),
     (124024, '36-41, 7-10', 'CORELLI_124024_banks_36-41_7-10'),
@@ -65,11 +65,11 @@ for n, run in enumerate(runs):
             _ws.setY(i+j, _data[j])
     
     # calculate the calibration table with cleaned signals
-    try:
-        calibrate_banks("_ws", banks)
-        # apply the calibration to the original workspace
-        apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated")
-    except:
-        calibrate_banks(f'ws_{n}', banks)
-        apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated_using_raw")
+    calibrate_banks("_ws", banks)
+    # apply the calibration to the original workspace
+    apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated_withCleaning")
+    
+    # reference group
+    calibrate_banks(f'ws_{n}', banks)
+    apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated_withoutCleaning")
 
