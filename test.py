@@ -46,7 +46,11 @@ runs = [
 n_pixels_per_tube = 256
 
 for n, run in enumerate(runs):
+    
     _, banks, filebase = run
+
+    print(f"Processing: {filebase}")
+
     nxs_file_name = f"/SNS/CORELLI/shared/tmp/calibration/{filebase}.nxs"
     load_banks(nxs_file_name, banks, output_workspace=f"ws_{n}")
     
@@ -61,8 +65,11 @@ for n, run in enumerate(runs):
             _ws.setY(i+j, _data[j])
     
     # calculate the calibration table with cleaned signals
-    calibrate_banks("_ws", banks)
-
-    # apply the calibration to the original workspace
-    apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated")
+    try:
+        calibrate_banks("_ws", banks)
+        # apply the calibration to the original workspace
+        apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated")
+    except:
+        calibrate_banks(f'ws_{n}', banks)
+        apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated_using_raw")
 
