@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 from os import path
 
-from scipy.signal import gaussian_filter1d
+from scipy.ndimage import gaussian_filter
 
 from corelli.calibration import (
     apply_calibration, 
@@ -16,37 +16,53 @@ from corelli.calibration import (
     new_corelli_calibration,
     )
 
-# isolate bank 7 and bank 8
-nxs_file_name = "/SNS/CORELLI/shared/tmp/calibration/CORELLI_124024_banks_36-41_7-10.nxs"
-load_banks(nxs_file_name, "36-41, 7-10", output_workspace="ws")
-
-# clone the workspace
-CloneWorkspace(InputWorkspace='ws', OutputWorkspace="ws_cleaned")
-
 
 def clean_signals(signal1D, pixels_per_tube=256, peak_interval_estimate=15):
-    _sig_gaussian = gaussian_filter1d(signal1D, int(peak_interval_estimate/2))
+    _sig_gaussian = gaussian_filter(signal1D, int(peak_interval_estimate/2))
     _sig_tmp = _sig_gaussian - signal1D
     _sig_tmp[_sig_tmp<0] = 1
     _idx = np.where(_sig_tmp==1)[0]
     _sig_tmp[:_idx[0]] = 1
     _sig_tmp[_idx[-1]:] = 1
     #
-    _base = np.average(gaussian_filter1d(signal1D, int(pixels_per_tube/2)))
+    _base = np.average(gaussian_filter(signal1D, int(pixels_per_tube/2)))
     return _base - _sig_tmp
 
-ws = mtd['ws']
-ws_cleaned = mtd['ws_cleaned']
+
+runs = [
+    (123452, '81-85, 87-90', 'CORELLI_123452_banks_81-85_87_90'),
+    (123453, '81-85, 87-90', 'CORELLI_123453_banks_81-85_87_90'),
+    (123454, '52-61', 'CORELLI_123454_banks_52-61'),
+    (123455, '20-28', 'CORELLI_123455_banks_20-28'),
+    (124016, '10-13, 15-19', 'CORELLI_124016_banks_10-13_15-19'),
+    (124018, '42-51', 'CORELLI_124018_banks_42-51'),
+    (124021, '68-71, 86, 31-35', 'CORELLI_124021_banks_68-71_86_31-35'),
+    (124022, '68-71, 86, 31-35', 'CORELLI_124022_banks_68-71_86_31-35'),
+    (124023, '10-19', 'CORELLI_124023_banks_10-19'),
+    (124024, '36-41, 7-10', 'CORELLI_124024_banks_36-41_7-10'),
+    ]
+
+# Macros from utils
 n_pixels_per_tube = 256
 
-# go over one tube at a time (can parallel if needed)
-for i in range(0, ws.getNumberHistograms(), n_pixels_per_tube):
-    _data = np.array([ws.readY(me) for me in range(i, i+n_pixels_per_tube)])
-    _data = clean_signals(_data)
-    _ = [ws_cleaned.setY(me, _data[me]) for me in range(i, i+n_pixels_per_tube)]
+for n, run in enumerate(runs):
+    _, banks, filebase = run
+    nxs_file_name = f"/SNS/CORELLI/shared/tmp/calibration/{filebase}.nxs"
+    load_banks(nxs_file_name, banks, output_workspace=f"ws_{n}")
+    
+    # make a clone for calculating the calibration table
+    CloneWorkspace(InputWorkspace=f'ws_{n}', OutputWorkspace="_ws")
 
-# calculate the calibration using cleaned data
-calibrate_banks("ws_cleaned", "36-41, 7-10")
+    _ws = mtd['_ws']
+    for i in range(0, _ws.getNumberHistograms(), n_pixels_per_tube):
+        _data = np.array([_ws.readY(me) for me in range(i, i+n_pixels_per_tube)])
+        _data = clean_signals(_data)
+        for j in range(n_pixels_per_tube):
+            _ws.setY(i+j, _data[j])
+    
+    # calculate the calibration table with cleaned signals
+    calibrate_banks("_ws", banks)
 
-# apply the calibration to original data
-apply_calibration("ws", "calibrations", output_workspace="ws_calibrated", show_instrument=True)
+    # apply the calibration to the original workspace
+    apply_calibration(f"ws_{n}", "calibrations", output_workspace=f"ws_{n}_calibrated")
+
